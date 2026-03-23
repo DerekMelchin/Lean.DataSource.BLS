@@ -1,47 +1,121 @@
-![LEAN Data Source SDK](http://cdn.quantconnect.com.s3.us-east-1.amazonaws.com/datasources/Github_LeanDataSourceSDK.png)
+# BLSEconomicSurveys - LEAN Data Source Contribution
 
-# Lean DataSource SDK
+## Overview
 
-[![Build Status](https://github.com/QuantConnect/LeanDataSdk/workflows/Build%20%26%20Test/badge.svg)](https://github.com/QuantConnect/LeanDataSdk/actions?query=workflow%3A%22Build%20%26%20Test%22)
+**Bureau of Labor Statistics Economic Surveys** - U.S. macroeconomic indicators across CPI, CES (Employment Situation), PPI, and JOLTS surveys with exact publication timestamps.
 
-### Introduction
+| Property | Value |
+|---|---|
+| **Type** | Unlinked dataset |
+| **Requires Mapping** | No |
+| **Has Universe Data** | No |
+| **Resolution** | Daily |
+| **Timezone** | America/New_York |
+| **Sparse** | Yes |
+| **Streaming** | No |
+| **Data Process Time** | ~30s (full history, cached release dates) |
+| **Data Process Duration** | ~30s |
+| **Update Process Duration** | ~5s |
 
-The Lean Data SDK is a cross-platform template repository for developing custom data types for Lean.
-These data types will be consumed by [QuantConnect](https://www.quantconnect.com/) trading algorithms and research environment, locally or in the cloud.
+## Publication Lag
 
-It is composed by example .Net solution for the data type and converter scripts.
+Each data point's `EndTime` is set to the **exact release date and time** scraped from BLS schedule pages at `https://www.bls.gov/schedule/{year}/home.htm`. CPI, CES, and PPI are released at 08:30 AM ET; JOLTS at 10:00 AM ET. Release dates are only available from the year 2000 onward (when BLS began publishing online schedules), so data prior to January 2000 is not included. The processing script caches scraped release dates to `release_dates_cache.json` to avoid repeated scraping.
 
-### Prerequisites
+## Partial Coverage Notes
 
-The solution targets dotnet 5, for installation instructions please follow [dotnet download](https://dotnet.microsoft.com/download).
+Some series within a survey category were introduced after the dataset's start date:
+- **PPI Final Demand series** (FinalDemand, CorePpi, FinalDemandGoods, etc.) were introduced in November 2009. These columns will be empty for data points before that date. The Reader handles empty values by returning `null` for those properties.
+- **CES AverageHourlyEarnings, AverageWeeklyHours, AverageWeeklyEarnings** series (CEU0500000003, CEU0500000002, CEU0500000011) may have limited early data.
+- **JOLTS** data begins November 2007 (earliest release date found on BLS schedule pages in new format).
 
-The data downloader and converter script can be developed in different ways: C# executable, Python script, Python Jupyter notebook or even a bash script.
-- The python script should be compatible with python 3.6.8
-- Bash script will run on Ubuntu Bionic
+Algorithms should use null-checking (`HasValue` in C#, `is not None` in Python) when accessing properties that may be absent for older data points.
 
-Specifically, the enviroment where these scripts will be run is [quantconnect/research](https://hub.docker.com/repository/docker/quantconnect/research) based on [quantconnect/lean:foundation](https://hub.docker.com/repository/docker/quantconnect/lean).
+## Generated Files
 
-### Installation
+| File | Purpose |
+|---|---|
+| `BLSEconomicSurveysCpi.cs` | CPI data model class (15 series) |
+| `BLSEconomicSurveysCes.cs` | CES data model class (16 series) |
+| `BLSEconomicSurveysPpi.cs` | PPI data model class (11 series) |
+| `BLSEconomicSurveysJolts.cs` | JOLTS data model class (8 series) |
+| `BLSEconomicSurveysAlgorithm.cs` | C# demonstration algorithm |
+| `BLSEconomicSurveysAlgorithm.py` | Python demonstration algorithm |
+| `DataProcessing/process.ipynb` | Jupyter notebook for data processing |
+| `DataProcessing/config.json` | Processing configuration |
+| `tests/BLSEconomicSurveysTests.cs` | Unit tests |
+| `listing-about.md` | Marketplace listing description |
+| `listing-documentation.md` | Full documentation |
+| `output/` | Sample data for demos and tests |
 
-The "Use this template" feature should be used for each unique data source which requires its own data processing. Once it is cloned locally, you should be able to successfully build the solution, run all tests and execute the downloader and/or conveter scripts. The final version should pass all CI tests of GitHub Actions.
+## Getting Started
 
-Once ready, please contact support@quantconnect.com and we will create a listing in the QuantConnect Data Market for your company and link to your public repository and commit hash. 
+### 1. Clone
 
-### Datasets Vendor Requirements
+```bash
+git clone https://github.com/<username>/Lean.DataSource.BLS.git
+cd Lean.DataSource.BLS
+```
 
-Key requirements for new vendors include:
+### 2. Configure
 
- - A well-defined dataset with a clear and static vision for the data to minimize churn or changes as people will be building systems from it. This is easiest with "raw" data (e.g. sunshine hours vs a sentiment algorithm)
- - Robust ticker and security links to ensure the tickers are tracked well through time, or accurately point in time. ISIN, FIGI, or point in time ticker supported
- - Robust funding to ensure viable for at least 1 year
- - Robust API to ensure reliable up-time. No dead links on site or and 502 servers while using API
- - Consistent delivery schedule, on time and in time for market trading
- - Consistent data format with notifications and lead time on data format updates
- - At least 1 year of historical point in time data
- - Survivorship bias free data
- - Good documentation for the dataset
+Edit `DataProcessing/config.json` and set your BLS API key:
+```json
+{
+  "bls-api-key": "YOUR_BLS_API_KEY_HERE",
+  "temp-output-directory": "C:/temp-output-directory",
+  "data-folder": "/path/to/Lean/Data/"
+}
+```
 
+Register for a free API key at https://data.bls.gov/registrationEngine/
 
-### Tutorials
+### 3. Compile
 
- - See [Tutorials](https://www.quantconnect.com/docs/v2/our-platform/datasets/contributing-datasets) for a step by step guide for creating a new LEAN Data Source.
+```bash
+dotnet build QuantConnect.DataSource.csproj
+dotnet build tests/Tests.csproj
+```
+
+### 4. Process Data
+
+```bash
+python -m venv nb_venv
+source nb_venv/bin/activate  # or nb_venv\Scripts\activate on Windows
+pip install requests nbconvert ipykernel pandas
+cd DataProcessing
+jupyter nbconvert --to notebook --execute process.ipynb
+```
+
+### 5. Test
+
+```bash
+dotnet test tests/Tests.csproj
+```
+
+### 6. Submit Pull Request
+
+Before submitting:
+- [ ] All unit tests pass
+- [ ] Demo algorithms run without error in C# and Python
+- [ ] Minimal sample data included in `output/`
+- [ ] Processing script reads existing data and merges incrementally
+- [ ] Processing script reads deployment date from `QC_DATAFLEET_DEPLOYMENT_DATE`
+- [ ] Processing script writes to temp output directory (not repo `output/`)
+- [ ] Code follows LEAN conventions (XML docs, decimal types, Apache 2.0 header)
+
+## CSV Format
+
+```
+time,endtime,series1,series2,...,seriesN
+20240101,20240213 08:30,325.252,331.950,...
+```
+
+- `time`: Start of observation period (1st of month, yyyyMMdd)
+- `endtime`: Exact release date and time (yyyyMMdd HH:mm)
+- Remaining columns: Series values (decimal, empty if not available)
+
+## Reference
+
+- [Dataset SDK Documentation](https://www.quantconnect.com/docs/v2/lean-engine/contributions/datasets/key-concepts)
+- [BLS API v2 Documentation](https://www.bls.gov/developers/api_signature_v2.htm)
+- [BLS Release Schedule](https://www.bls.gov/schedule/2026/home.htm)
