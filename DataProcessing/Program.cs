@@ -13,69 +13,7 @@
  * limitations under the License.
 */
 
-using System;
-using System.IO;
-using QuantConnect.Configuration;
-using QuantConnect.Logging;
-using QuantConnect.Util;
-
-namespace QuantConnect.DataProcessing
-{
-    /// <summary>
-    /// Entrypoint for the data downloader/converter
-    /// </summary>
-    public class Program
-    {
-        /// <summary>
-        /// Entrypoint of the program
-        /// </summary>
-        /// <returns>Exit code. 0 equals successful, and any other value indicates the downloader/converter failed.</returns>
-        public static void Main()
-        {
-            // Get the config values first before running. These values are set for us
-            // automatically to the value set on the website when defining this data type
-            var destinationDirectory = Path.Combine(
-                Config.Get("temp-output-directory", "/temp-output-directory"),
-                "alternative",
-                "vendorname");
-
-            MyCustomDataDownloader instance = null;
-            try
-            {
-                // Pass in the values we got from the configuration into the downloader/converter.
-                instance = new MyCustomDataDownloader(destinationDirectory);
-            }
-            catch (Exception err)
-            {
-                Log.Error(err, $"QuantConnect.DataProcessing.Program.Main(): The downloader/converter for {MyCustomDataDownloader.VendorDataName} {MyCustomDataDownloader.VendorDataName} data failed to be constructed");
-                Environment.Exit(1);
-            }
-
-            // No need to edit anything below here for most use cases.
-            // The downloader/converter is ran and cleaned up for you safely here.
-            try
-            {
-                // Run the data downloader/converter.
-                var success = instance.Run();
-                if (!success)
-                {
-                    Log.Error($"QuantConnect.DataProcessing.Program.Main(): Failed to download/process {MyCustomDataDownloader.VendorName} {MyCustomDataDownloader.VendorDataName} data");
-                    Environment.Exit(1);
-                }
-            }
-            catch (Exception err)
-            {
-                Log.Error(err, $"QuantConnect.DataProcessing.Program.Main(): The downloader/converter for {MyCustomDataDownloader.VendorDataName} {MyCustomDataDownloader.VendorDataName} data exited unexpectedly");
-                Environment.Exit(1);
-            }
-            finally
-            {
-                // Run cleanup of the downloader/converter once it has finished or crashed.
-                instance.DisposeSafely();
-            }
-            
-            // The downloader/converter was successful
-            Environment.Exit(0);
-        }
-    }
-}
+// Stub entry point — data processing is done via process.ipynb (Jupyter Notebook).
+// This file exists so DataProcessing.csproj compiles and generates the runtime
+// config needed by CLRImports.py.
+System.Console.WriteLine("Use process.ipynb for data processing.");

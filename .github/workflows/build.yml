@@ -8,36 +8,56 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-20.04
-    container:
-        image: quantconnect/lean:foundation
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v2
+      - name: Checkout
+        uses: actions/checkout@v5
 
-      - name: Checkout Lean Same Branch
-        id: lean-same-branch
-        uses: actions/checkout@v2
-        continue-on-error: true
-        with:
-          ref: ${{ github.ref }}
-          repository: QuantConnect/Lean
-          path: Lean
+      - name: Setup
+        uses: ./.github/actions/setup
 
-      - name: Checkout Lean Master
-        if: steps.lean-same-branch.outcome != 'success'
-        uses: actions/checkout@v2
-        with:
-          repository: QuantConnect/Lean
-          path: Lean
+      - name: Copy sample data to LEAN Data folder
+        run: cp -r ../Lean.DataSource.BLS/output/* ../Lean/Data/
 
-      - name: Move Lean
-        run: mv Lean ../Lean
+      - name: Start container
+        run: |
+          docker run -d \
+            --workdir /__w/Lean.DataSource.BLS/Lean.DataSource.BLS \
+            -v /home/runner/work:/__w \
+            --name test-container \
+            quantconnect/lean:foundation \
+            tail -f /dev/null
 
-      - name: BuildDataSource
-        run: dotnet build ./QuantConnect.DataSource.csproj /p:Configuration=Release /v:quiet /p:WarningLevel=1
+      - name: Build DataSource
+        run: runInContainer dotnet build ./QuantConnect.DataSource.csproj /p:Configuration=Release /v:quiet /p:WarningLevel=1
 
-      - name: BuildTests
-        run: dotnet build ./tests/Tests.csproj /p:Configuration=Release /v:quiet /p:WarningLevel=1
+      - name: Build Tests
+        run: runInContainer dotnet build ./tests/Tests.csproj /p:Configuration=Release /v:quiet /p:WarningLevel=1
 
       - name: Run Tests
-        run: dotnet test ./tests/bin/Release/net6.0/Tests.dll
+        run: runInContainer dotnet test ./tests/bin/Release/net10.0/Tests.dll
+
+      - name: Build LEAN Launcher
+        run: runInContainer dotnet build ../Lean/Launcher/QuantConnect.Lean.Launcher.csproj /p:Configuration=Release /p:OutputPath=bin/Release /v:quiet /p:WarningLevel=1
+
+      - name: Copy DataSource to LEAN Launcher
+        run: runInContainer cp ./tests/bin/Release/net10.0/QuantConnect.DataSource.BLS.dll ../Lean/Launcher/bin/Release/
+
+      - name: Run C# Demo Algorithm
+        run: |
+          output=$(runInContainer bash -c "cd ../Lean/Launcher/bin/Release && dotnet ./QuantConnect.Lean.Launcher.dll --data-folder /__w/Lean.DataSource.BLS/Lean/Data/ --algorithm-language CSharp --algorithm-type-name BLSEconomicSurveysAlgorithm --algorithm-location /__w/Lean.DataSource.BLS/Lean.DataSource.BLS/tests/bin/Release/net10.0/Tests.dll --close-automatically true" 2>&1)
+          echo "$output"
+          echo "$output" | grep -q "STATISTICS:: Total Orders [^0]" || { echo "Algorithm placed no trades"; exit 1; }
+
+      - name: Run Python Demo Algorithm
+        run: |
+          output=$(runInContainer bash -c 'cd ../Lean/Launcher/bin/Release && dotnet ./QuantConnect.Lean.Launcher.dll --data-folder /__w/Lean.DataSource.BLS/Lean/Data/ --algorithm-language Python --algorithm-type-name BLSEconomicSurveysAlgorithm --algorithm-location /__w/Lean.DataSource.BLS/Lean.DataSource.BLS/BLSEconomicSurveysAlgorithm.py --close-automatically true' 2>&1) || true
+          echo "$output"
+          echo "$output" | grep -q "STATISTICS:: Total Orders [^0]" || { echo "Algorithm placed no trades"; exit 1; }
+
+      - name: Stop container
+        run: docker rm -f test-container
+
+  rename:
+    needs: build
+    uses: ./.github/workflows/rename-build.yml
